@@ -10,13 +10,14 @@ import json
 from nltk.tokenize import word_tokenize
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.preprocessing import StandardScaler, Normalizer
 from tqdm import tqdm
 
 import hashfiles
-
+import liar.multiclass as liar
 
 LOG = logging.getLogger(__name__)
 
@@ -140,7 +141,7 @@ def to_vector(speakers):
         labels.extend([distinct_labels.index(label) for i in range(len(texts))])
         features.append(texts)
 
-    return np.concatenate(features), labels
+    return np.concatenate(features), np.array(labels)
 
 
 def print_overview(speakers):
@@ -159,10 +160,19 @@ if __name__ == '__main__':
 
     wordlist = list(zip(*get_frequent_words(speakers, 100)))[0]
     speakers = filter_texts(speakers, wordlist, 20)
+    speakers = dict(list(speakers.items())[0:5])
 
     X, y = to_vector(speakers)
-    X_train, X_test, y_train, y_test = train_test_split([X, y], train_size=.8)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, train_size=.8, test_size=.2)
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
-    X_test = scaler.transform(X_test)    
-    
+    X_test = scaler.transform(X_test)
+    calibrator = liar.KDECalibrator(bandwidth=.1)
+    #calibrator = liar.DummyCalibrator()
+    scorer = liar.CalibratedScorer(scorer=LogisticRegression(class_weight='balanced', solver='lbfgs', multi_class='auto'), calibrator=calibrator, fit_calibrator=True)
+    scorer.fit(X_train, y_train)
+    p = scorer.predict_proba(X_test, y_test)
+    liar.plot_density(scorer.calibrator, show=True)
+    liar.plot_lr_histogram(p, y_test, show=True)
+    #score = liar.cllr(p, y_test)
+    #print(score)

@@ -1,0 +1,59 @@
+#!/bin/bash
+
+set -e
+
+subtree=
+repo=
+branch=$(git rev-parse --abbrev-ref HEAD)
+op=pull
+
+print_help() {
+	echo "Usage: $(basename $0) --subtree telecom|lrtools [--branch=BRANCH] [--op=pull|push]"
+	return 1
+}
+
+while [ "$#" -gt 0 ]; do
+	if [ "$1" = '-h' ]; then
+		print_help
+	elif [ "$1" = '--branch' ]; then
+		shift
+		branch="$1"
+	elif [ "$1" = '--subtree' ]; then
+		shift
+		if [ "$1" = 'telecom' ]; then
+			subtree=lib/telecom
+			repo=ssh://git@bitbucket.dev.holmes.nl:7999/telecom/telecom.git
+		elif [ "$1" = 'lrtools' ]; then
+			subtree=lib/lrtools
+			repo=ssh://git@bitbucket.dev.holmes.nl:7999/kec/lrtools.git
+		elif [ "$1" = 'samen' ]; then
+			subtree=lib/samen
+			repo=ssh://git@bitbucket.dev.holmes.nl:7999/telecom/telcolocatie.git
+		else
+			echo "unrecognized subtree: $1" >&2
+			false
+		fi
+	elif [ "$1" = '--op' ]; then
+		shift
+		op="$1"
+	elif [ "$1" = "--" ]; then
+		shift
+		break
+	else
+		echo "unrecognized argument: $1" >&2
+		false
+	fi
+
+	shift
+done
+
+if [ -z "$repo" -o -z "$subtree" ]; then
+	echo 'missing repository URL' >&2
+	print_help
+fi
+
+if [ "$op" = 'pull' -a ! -e $subtree ]; then
+	op=add
+fi
+
+git subtree $op --prefix $subtree $repo $branch --squash "$@"
