@@ -11,9 +11,11 @@ from nltk.tokenize import word_tokenize
 import numpy as np
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import confusion_matrix
 from sklearn.model_selection import train_test_split
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.preprocessing import StandardScaler, Normalizer
+from sklearn.svm import SVC
 from tqdm import tqdm
 
 import hashfiles
@@ -68,7 +70,10 @@ def opentext(path, digest):
     return hashfiles.open(path, digest, algorithm='sha256', encoding=encoding, mode='t')
 
 
+all_words = 0
+
 def read_session(lines):
+    global all_words
     speakers = []
     for line in lines:
         if line.startswith('    item ['):
@@ -78,8 +83,11 @@ def read_session(lines):
         if mtext is not None:
             s = mtext.group(1)
             s = s.translate({ord(c): None for c in string.punctuation})
+            all_words += len(word_tokenize(s))
+            #print(word_tokenize(s))
             words.extend(word_tokenize(s))
 
+    print('all words in session:', all_words)
     return speakers
 
 
@@ -167,6 +175,13 @@ if __name__ == '__main__':
     scaler = StandardScaler()
     X_train = scaler.fit_transform(X_train)
     X_test = scaler.transform(X_test)
+    clf = SVC(gamma='auto', probability=True)
+    clf.fit(X_train, y_train)
+
+    y_pred = clf.predict_proba(X_test)
+    print('classifier score', clf.score(X_test, y_test))
+    #print(confusion_matrix(y_test, y_pred))
+
     calibrator = liar.KDECalibrator(bandwidth=.1)
     #calibrator = liar.DummyCalibrator()
     scorer = liar.CalibratedScorer(scorer=LogisticRegression(class_weight='balanced', solver='lbfgs', multi_class='auto'), calibrator=calibrator, fit_calibrator=True)
@@ -174,5 +189,5 @@ if __name__ == '__main__':
     p = scorer.predict_proba(X_test, y_test)
     liar.plot_density(scorer.calibrator, show=True)
     liar.plot_lr_histogram(p, y_test, show=True)
-    #score = liar.cllr(p, y_test)
-    #print(score)
+    score = liar.cllr(p, y_test)
+    print('CLLR', score)
